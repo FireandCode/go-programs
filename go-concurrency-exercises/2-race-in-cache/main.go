@@ -10,8 +10,13 @@ package main
 
 import (
 	"container/list"
+	"sync"
 	"testing"
+
+	"golang.org/x/sync/singleflight"
 )
+
+var sngfl singleflight.Group 
 
 // CacheSize determines how big the cache can grow
 const CacheSize = 100
@@ -32,6 +37,7 @@ type KeyStoreCache struct {
 	cache map[string]*list.Element
 	pages list.List
 	load  func(string) string
+	mul sync.RWMutex
 }
 
 // New creates a new KeyStoreCache
@@ -44,23 +50,54 @@ func New(load KeyStoreCacheLoader) *KeyStoreCache {
 
 // Get gets the key from cache, loads it from the source if needed
 func (k *KeyStoreCache) Get(key string) string {
+
+	k.mul.RLock()
+	if e, ok := k.cache[key]; ok {
+		val := e.Value.(page).Value
+		k.mul.RUnlock()
+
+		k.mul.Lock()
+		k.pages.MoveToFront(e)
+		k.mul.Unlock()
+
+		return val 
+	}
+	k.mul.RUnlock()
+	
+
+	// Miss - load from database and save it in cache
+	val, _ , _ := sngfl.Do(key, func() (interface{}, error) {
+		val := k.load(key)
+		
+		return val, nil
+	})
+	valSt := val.(string)
+	p := page{Key: key, Value: valSt}
+
+	// if cache is full remove the least used item
+
+	k.mul.Lock()
+	defer k.mul.Unlock()
+
+		// Double-check if another thread already inserted it
 	if e, ok := k.cache[key]; ok {
 		k.pages.MoveToFront(e)
 		return e.Value.(page).Value
 	}
-	// Miss - load from database and save it in cache
-	p := page{key, k.load(key)}
-	// if cache is full remove the least used item
+
 	if len(k.cache) >= CacheSize {
 		end := k.pages.Back()
-		// remove from map
-		delete(k.cache, end.Value.(page).Key)
-		// remove from list
-		k.pages.Remove(end)
+		if end != nil {
+			evicted := end.Value.(page)
+			delete(k.cache, evicted.Key)
+			k.pages.Remove(end)
+		}
 	}
-	k.pages.PushFront(p)
-	k.cache[key] = k.pages.Front()
-	return p.Value
+
+
+	elem := k.pages.PushFront(p)
+	k.cache[key] = elem
+	return valSt
 }
 
 // Loader implements KeyStoreLoader
