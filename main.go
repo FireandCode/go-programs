@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -675,14 +676,105 @@ func main() {
 //         fmt.Println(<-ch)
 //     }
 // }\
-func main()  {
-	start := time.Now();
-	n := 1000*1000*10;
-	var mx int64 =0;
-	for i := 0; i<n; i++ {
-		mx = max(mx, int64(n))
-	}
+// 	start := time.Now();
+// 	n := 1000*1000*10;
+// 	var mx int64 =0;
+// 	for i := 0; i<n; i++ {
+// 		mx = max(mx, int64(n))
+// 	}
 
-    elapsed := time.Since(start)
-    fmt.Println("Time taken:", elapsed)
+//     elapsed := time.Since(start)
+//     fmt.Println("Time taken:", elapsed)
+
+// 	ch := make(chan int)
+// 	var chh chan int
+// 	chh = make(chan int)
+// 	for i :=1; i< 10; i++ {
+// 	go func(i int) {
+// 		ch <- i
+// 		chh <- i+5
+// 		}(i)
+
+// 	}
+
+// 	fmt.Println(<-ch)
+// 	fmt.Println(<-ch)
+// 	fmt.Println(<-chh)
+
+// for {
+//     select {
+//     case val, ok := <-ch:
+//         if !ok {
+//             fmt.Println("Channel closed, exiting.")
+//             return
+//         }
+//         fmt.Println("Received:", val)
+// 	case val, ok := <- chh:
+// 		if !ok {
+// 			fmt.Println("channel closed, existing.")
+// 			return
+// 		}
+// 		fmt.Println("cchhhh ", val)
+//     default:
+//         fmt.Println("Waiting...")
+//         time.Sleep(100 * time.Millisecond)
+//     }
+// }
+
+// ticker := time.NewTicker(1 * time.Second)
+// ticker.Reset(2* time.Second)
+// wg := sync.WaitGroup{}
+// n := 5;
+// for {
+// 	n--
+// 	if(n <0) {
+// 		break
+// 	}
+// 	select {
+// 	case <-ticker.C:
+// 		wg.Add(1)
+// 		go printTime(&wg)
+// 	}
+// }
+// wg.Wait()
+
+func printTime(wg *sync.WaitGroup) int {
+		fmt.Println(time.Now())
+		wg.Done()
+		return 2
 }
+func main()  {
+
+  ch := make(chan string, 1)
+  wg := &sync.WaitGroup{}
+  
+  a := "hello"
+  wg.Add(1)
+  go func (a string)  {
+	// wg.Add(1)
+	 ch <- a
+	 fmt.Println("go routine 1 is done")
+	//  wg.Done()
+  }(a)
+
+  go func() {
+	// wg.Add(1)
+	time.Sleep(2*time.Second)
+   for {
+	select {
+	case val, ok := <-ch :
+		if ok {
+			fmt.Println(val + " world")
+		}
+		wg.Done()
+		return
+
+	default:
+		fmt.Println("going to sleep")
+		time.Sleep(1* time.Second)
+	}
+   }
+  }()
+   wg.Wait()
+}
+
