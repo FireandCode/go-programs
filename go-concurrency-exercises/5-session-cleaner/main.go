@@ -20,25 +20,27 @@ package main
 import (
 	"errors"
 	"log"
+	"sync"
+	"time"
 )
 
 // SessionManager keeps track of all sessions from creation, updating
 // to destroying.
 type SessionManager struct {
-	sessions map[string]Session
+	sessions sync.Map
 }
 
 // Session stores the session's data
 type Session struct {
-	Data map[string]interface{}
+	Data      map[string]interface{}
+	lastLogin time.Time
+	mu        sync.RWMutex
 }
 
 // NewSessionManager creates a new sessionManager
 func NewSessionManager() *SessionManager {
-	m := &SessionManager{
-		sessions: make(map[string]Session),
-	}
-
+	m := &SessionManager{}
+	go m.CleanUp()
 	return m
 }
 
@@ -49,9 +51,11 @@ func (m *SessionManager) CreateSession() (string, error) {
 		return "", err
 	}
 
-	m.sessions[sessionID] = Session{
-		Data: make(map[string]interface{}),
+	session := &Session{
+		Data:      make(map[string]interface{}),
+		lastLogin: time.Now(),
 	}
+	m.sessions.Store(sessionID, session)
 
 	return sessionID, nil
 }
@@ -63,26 +67,57 @@ var ErrSessionNotFound = errors.New("SessionID does not exists")
 // GetSessionData returns data related to session if sessionID is
 // found, errors otherwise
 func (m *SessionManager) GetSessionData(sessionID string) (map[string]interface{}, error) {
-	session, ok := m.sessions[sessionID]
+	sessionInterface, ok := m.sessions.Load(sessionID)
 	if !ok {
 		return nil, ErrSessionNotFound
 	}
-	return session.Data, nil
+	
+	session := sessionInterface.(*Session)
+	session.mu.RLock()
+	defer session.mu.RUnlock()
+	
+	// Create a copy to avoid external modification
+	dataCopy := make(map[string]interface{})
+	for k, v := range session.Data {
+		dataCopy[k] = v
+	}
+	return dataCopy, nil
 }
 
 // UpdateSessionData overwrites the old session data with the new one
 func (m *SessionManager) UpdateSessionData(sessionID string, data map[string]interface{}) error {
-	_, ok := m.sessions[sessionID]
+	sessionInterface, ok := m.sessions.Load(sessionID)
 	if !ok {
 		return ErrSessionNotFound
 	}
-
-	// Hint: you should renew expiry of the session here
-	m.sessions[sessionID] = Session{
-		Data: data,
-	}
+	
+	session := sessionInterface.(*Session)
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	
+	// Update the session data and renew expiry
+	session.Data = data
+	session.lastLogin = time.Now()
 
 	return nil
+}
+
+func (m *SessionManager) CleanUp() {
+	for {
+		now := time.Now()
+		m.sessions.Range(func(key, value interface{}) bool {
+			session := value.(*Session)
+			session.mu.RLock()
+			lastLogin := session.lastLogin
+			session.mu.RUnlock()
+			
+			if now.Sub(lastLogin) > 5*time.Second {
+				m.sessions.Delete(key)
+			}
+			return true
+		})
+		time.Sleep(2 * time.Second)
+	}
 }
 
 func main() {
