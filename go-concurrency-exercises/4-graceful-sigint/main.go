@@ -13,10 +13,36 @@
 
 package main
 
+import (
+	"fmt"
+	"os"
+	"os/signal"
+	"sync/atomic"
+	"syscall"
+)
+
 func main() {
 	// Create a process
 	proc := MockProcess{}
+	ch := make(chan os.Signal, 1)
 
-	// Run the process (blocking)
-	proc.Run()
+	signal.Notify(ch, os.Interrupt, syscall.SIGINT)
+	count := int32(0)
+	
+	// Run the process in a goroutine
+	go proc.Run()
+	
+	// Handle signals in main goroutine
+	for sig := range ch {
+		fmt.Println("Received Signal and count:", sig, count)
+		if atomic.AddInt32(&count, 1) == 1 {
+			fmt.Println("\nReceived Signal:", sig)
+			fmt.Println("Stopping the process gracefully...")
+			go proc.Stop() // Run Stop() in a goroutine so we can handle more signals
+		} else {
+			fmt.Println("\nReceived second Signal:", sig)
+			fmt.Println("Force killing the program...")
+			os.Exit(1)
+		}
+	}
 }
