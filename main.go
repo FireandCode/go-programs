@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -738,16 +739,10 @@ func main() {
 // }
 // wg.Wait()
 
-func printTime(wg *sync.WaitGroup) int {
-		fmt.Println(time.Now())
-		wg.Done()
-		return 2
-}
-func main()  {
-
+/*
   ch := make(chan string, 1)
   wg := &sync.WaitGroup{}
-  
+
   a := "hello"
   wg.Add(1)
   go func (a string)  {
@@ -776,5 +771,47 @@ func main()  {
    }
   }()
    wg.Wait()
+}
+*/
+
+func printTime(wg *sync.WaitGroup) int {
+		fmt.Println(time.Now())
+		wg.Done()
+		return 2
+}
+
+type Check struct{
+	on sync.Once
+}
+
+func initalize(check Check)  {
+	check.on.Do(func() {
+		fmt.Println("Initializing.... ")
+	})	
+}
+
+func main()  {
+ counter := int64(0)
+ check := Check{
+	on: sync.Once{},
+ }
+
+ initalize(check)
+ initalize(check)
+
+  initalize(check)
+
+ wg := &sync.WaitGroup{}
+ for i := 0; i < 1000; i++ {
+	wg.Add(1)
+	go func ()  {
+	 atomic.AddInt64(&counter, 1)
+	 wg.Done()
+}()
+ }
+
+
+wg.Wait()
+ fmt.Println(counter)
 }
 
